@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics & Market Insights | KitaKita</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <h2>Kita<span>Kita</span></h2>
+                <button id="sidebar-toggle" class="btn-icon" aria-label="Toggle Sidebar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+            </div>
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-link">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                    <span class="link-text">Dashboard</span>
+                </a>
+                <a href="inventory.html" class="nav-link">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    <span class="link-text">Inventory</span>
+                </a>
+                <a href="pos.html" class="nav-link">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                    <span class="link-text">POS Kiosk</span>
+                </a>
+                <a href="accounts.html" class="nav-link">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span class="link-text">Accounts</span>
+                </a>
+                <a href="analytics.html" class="nav-link active">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    <span class="link-text">Analytics</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title">Market Intelligence & Analytics</h1>
+                    <p class="text-muted">Deep operational insights, demand forecasting, and credit risk monitoring.</p>
+                </div>
+            </header>
+
+            <!-- Executive KPI Grid -->
+            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div class="card stat-card" style="padding: 20px;">
+                    <p class="text-muted" style="font-size: 0.85rem;">Total Revenue</p>
+                    <h2 id="kpi-revenue" style="font-size: 1.8rem; margin: 6px 0;">₱0.00</h2>
+                    <span id="badge-margin" class="badge badge-success">0.0% Margin</span>
+                </div>
+                <div class="card stat-card" style="padding: 20px;">
+                    <p class="text-muted" style="font-size: 0.85rem;">Net Profit</p>
+                    <h2 id="kpi-profit" style="font-size: 1.8rem; margin: 6px 0;" class="text-accent">₱0.00</h2>
+                    <span class="text-muted" style="font-size: 0.75rem;">Earnings after item costs</span>
+                </div>
+                <div class="card stat-card" style="padding: 20px;">
+                    <p class="text-muted" style="font-size: 0.85rem;">Total Outstanding Utang</p>
+                    <h2 id="kpi-utang" style="font-size: 1.8rem; margin: 6px 0;" class="text-danger">₱0.00</h2>
+                    <span class="text-muted" style="font-size: 0.75rem;">Active student tab balance</span>
+                </div>
+                <div class="card stat-card" style="padding: 20px;">
+                    <p class="text-muted" style="font-size: 0.85rem;">Total Transactions</p>
+                    <h2 id="kpi-transactions" style="font-size: 1.8rem; margin: 6px 0;">0</h2>
+                    <span class="text-muted" style="font-size: 0.75rem;">Recorded orders</span>
+                </div>
+            </div>
+
+            <!-- Market Intelligence & Demand Section -->
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- Category Demand Forecast -->
+                <section class="card" style="padding: 20px;">
+                    <h3 style="margin-bottom: 4px;">Category Demand Forecast</h3>
+                    <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 16px;">Top-performing item per inventory category based on sales volume.</p>
+                    <div id="category-demand-list" style="display: flex; flex-direction: column; gap: 12px;">
+                        <!-- Dynamically populated -->
+                    </div>
+                </section>
+
+                <!-- Peak Hours Rush Analysis -->
+                <section class="card" style="padding: 20px;">
+                    <h3 style="margin-bottom: 4px;">Peak Rush Hours</h3>
+                    <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 16px;">Transaction frequency by time of day.</p>
+                    <div style="height: 220px; position: relative;">
+                        <canvas id="peakHoursChart"></canvas>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Operational Insights: Profit Leaderboard & Stock Runway -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- Profit Margin Leaderboard -->
+                <section class="card" style="padding: 20px;">
+                    <h3 style="margin-bottom: 4px;">Top Profit Generators</h3>
+                    <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 16px;">Items driving the highest net margin earnings.</p>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table" style="font-size: 0.9rem;">
+                            <thead>
+                                <tr>
+                                    <th>Item Name</th>
+                                    <th>Units Sold</th>
+                                    <th>Total Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profit-leaderboard-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Stock Depletion Runway -->
+                <section class="card" style="padding: 20px;">
+                    <h3 style="margin-bottom: 4px;">Stock Runway & Depletion Alert</h3>
+                    <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 16px;">Estimated days of stock remaining based on sales velocity.</p>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table" style="font-size: 0.9rem;">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Stock</th>
+                                    <th>Runway Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stock-runway-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Transaction Ledger & Low-Profile What-If Simulator -->
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- Transaction History Ledger -->
+                <section class="card table-container" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div>
+                            <h3 style="margin-bottom: 2px;">Transaction History Ledger</h3>
+                            <p class="text-muted" style="font-size: 0.85rem;">Complete archive of all point-of-sale checkouts.</p>
+                        </div>
+                    </div>
+                    <div style="overflow-x: auto; max-height: 350px;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Sale ID</th>
+                                    <th>Time</th>
+                                    <th>Revenue</th>
+                                    <th>Profit</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sales-ledger-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Low-Profile What-If Simulator Widget -->
+                <section class="card" style="padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <h3 style="margin-bottom: 4px;">What-If Simulator</h3>
+                        <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 16px;">Simulate retail price adjustments across active inventory.</p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div>
+                                <label class="text-muted" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Price Adjustment Modifier</label>
+                                <select id="simulator-modifier" class="form-control">
+                                    <option value="1.05">Increase Prices by +5%</option>
+                                    <option value="1.10">Increase Prices by +10%</option>
+                                    <option value="0.95">Decrease Prices by -5% (Promo)</option>
+                                </select>
+                            </div>
+                            <div style="background: var(--bg-surface-secondary); padding: 12px; border-radius: 8px;">
+                                <p class="text-muted" style="font-size: 0.8rem;">Projected Revenue Shift:</p>
+                                <h4 id="simulation-result" style="color: var(--accent); margin-top: 4px;">₱0.00</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="run-simulation-btn" style="width: 100%; margin-top: 16px;">Calculate Simulation</button>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="analytics.js"></script>
+</body>
+</html>
