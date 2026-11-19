@@ -153,10 +153,10 @@ async function renderPOSGrid() {
             <div>
                 <strong>${item.name}</strong>
                 <p class="text-muted" style="font-size: 0.8rem;">
-                    ${item.trackStock === 0 ? 'Fresh Portion' : `Stock: ${item.stock}`}
+                    ${item.trackStock === 0 ? 'Fresh Portion' : `Stock: ${commas(item.stock)}`}
                 </p>
             </div>
-            <strong class="text-accent">₱${item.price.toFixed(2)}</strong>
+            <strong class="text-accent">${peso(item.price)}</strong>
         </div>
     `).join('');
 
@@ -182,7 +182,7 @@ function setupCustomPriceModal() {
 
         const customItem = {
             id: `custom_${Date.now()}`,
-            name: `Custom Charge (₱${val.toFixed(2)})`,
+            name: `Custom Charge (${peso(val)})`,
             price: val,
             cost: val * 0.6,
             qty: 1,
@@ -191,7 +191,7 @@ function setupCustomPriceModal() {
 
         cart.push(customItem);
         renderCart();
-        showToast(`Added Custom Charge (₱${val.toFixed(2)})`, 'success');
+        showToast(`Added Custom Charge (${peso(val)})`, 'success');
         priceInput.value = '';
         modal.classList.remove('active');
     };
@@ -248,14 +248,14 @@ function renderCart() {
             <li class="cart-item">
                 <div>
                     <strong>${item.name}</strong>
-                    <p class="text-muted" style="font-size: 0.8rem;">₱${item.price.toFixed(2)} x ${item.qty}</p>
+                    <p class="text-muted" style="font-size: 0.8rem;">${peso(item.price)} x ${commas(item.qty)}</p>
                 </div>
-                <strong>₱${itemTotal.toFixed(2)}</strong>
+                <strong>${peso(itemTotal)}</strong>
             </li>`;
     }).join('');
 
-    subtotalEl.textContent = `₱${subtotal.toFixed(2)}`;
-    totalEl.textContent = `₱${subtotal.toFixed(2)}`;
+    subtotalEl.textContent = `${peso(subtotal)}`;
+    totalEl.textContent = `${peso(subtotal)}`;
     checkoutBtn.disabled = false;
 }
 
@@ -265,10 +265,33 @@ async function processCheckout() {
     const customerSelect = document.getElementById('pos-customer-select');
     const selectedUserId = customerSelect ? customerSelect.value : 'walkin';
 
+    // Pre-calculate cart totals BEFORE touching inventory or database
     let totalRevenue = 0;
     let totalCost = 0;
+    for (const cartItem of cart) {
+        totalRevenue += cartItem.price * cartItem.qty;
+        totalCost += (cartItem.cost || 0) * cartItem.qty;
+    }
 
-    // 1. Deduct stock from SQLite inventory for tracked items & calculate totals
+    // 0. UTANG CREDIT LIMIT & FREEZE CHECK (Runs before any DB changes)
+    let targetUser = null;
+    if (selectedUserId !== 'walkin') {
+        targetUser = cachedUsers.find(u => u.id === selectedUserId);
+        if (targetUser) {
+            const currentBalance = Number(targetUser.balance) || 0;
+            const projectedBalance = currentBalance + totalRevenue;
+
+            if (projectedBalance > MAX_UTANG_LIMIT) {
+                showToast(
+                    `UTANG FROZEN: ${targetUser.full_name}'s balance (${peso(currentBalance)}) + order (${peso(totalRevenue)}) exceeds the ${peso(MAX_UTANG_LIMIT)} limit!`,
+                    'danger'
+                );
+                return; // Stop checkout completely—no stock deducted, no sale logged
+            }
+        }
+    }
+
+    // 1. Deduct stock from SQLite inventory for tracked items
     for (const cartItem of cart) {
         const invItem = cachedInventory.find(i => i.id === cartItem.id);
         if (invItem && invItem.trackStock !== 0) {
@@ -281,21 +304,16 @@ async function processCheckout() {
                 body: JSON.stringify(invItem)
             });
         }
-        totalRevenue += cartItem.price * cartItem.qty;
-        totalCost += (cartItem.cost || 0) * cartItem.qty;
     }
 
     // 2. If a registered user account was selected, update their utang balance
-    if (selectedUserId !== 'walkin') {
-        const targetUser = cachedUsers.find(u => u.id === selectedUserId);
-        if (targetUser) {
-            const newBalance = (targetUser.balance || 0) + totalRevenue;
-            await fetch(`${API_USERS}/balance`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: targetUser.id, balance: newBalance })
-            });
-        }
+    if (targetUser) {
+        const newBalance = (Number(targetUser.balance) || 0) + totalRevenue;
+        await fetch(`${API_USERS}/balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: targetUser.id, balance: newBalance })
+        });
     }
 
     // 3. Record the sale in the SQLite sales table
@@ -340,7 +358,9 @@ async function loadPOSAccounts() {
     let optionsHtml = `<option value="walkin">Walk-in Customer (General Cash)</option>`;
     
     customerAccounts.forEach(acc => {
-        optionsHtml += `<option value="${acc.id}">${acc.full_name} (@${acc.username}) - Tab Balance: ₱${(acc.balance || 0).toFixed(2)}</option>`;
+        const isFrozen = (Number(acc.balance) || 0) >= MAX_UTANG_LIMIT;
+        const freezeTag = isFrozen ? ' [FROZEN - LIMIT REACHED]' : '';
+        optionsHtml += `<option value="${acc.id}">${acc.full_name} (@${acc.username}) - Tab Balance: ${peso(acc.balance)}${freezeTag}</option>`;
     });
 
     select.innerHTML = optionsHtml;

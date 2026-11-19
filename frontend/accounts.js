@@ -108,6 +108,11 @@ async function initAccountsPage() {
 
         const fullName = document.getElementById('acc-name').value.trim();
         const initialBalance = parseFloat(document.getElementById('acc-balance').value) || 0;
+
+        if (initialBalance > MAX_UTANG_LIMIT) {
+            showToast(`Initial Utang balance cannot exceed ${peso(MAX_UTANG_LIMIT)}.`, 'danger');
+            return;
+        }
         
         // Auto-generate username from name (e.g., "Juan Dela Cruz" -> "juandelacruz")
         const username = fullName.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -132,7 +137,7 @@ async function initAccountsPage() {
 
             const result = await response.json();
             if (response.ok && result.message === 'success') {
-                showToast(`Registered ${fullName} successfully! (Default Pass: password123)`, 'success');
+                showToast(`Registered ${fullName} successfully!`, 'success');
                 closeAccountModal();
                 await renderAccountsTable();
             } else {
@@ -165,7 +170,7 @@ async function initAccountsPage() {
 
             const result = await response.json();
             if (result.message === 'success') {
-                showToast(`Payment of ₱${payAmount.toFixed(2)} recorded for ${user.full_name}!`, 'success');
+                showToast(`Payment of ${peso(payAmount)} recorded for ${user.full_name}!`, 'success');
                 closePaymentModal();
                 await renderAccountsTable();
             }
@@ -200,17 +205,29 @@ async function renderAccountsTable() {
         return;
     }
 
-    tableBody.innerHTML = customers.map(acc => `
-        <tr>
+    tableBody.innerHTML = customers.map(acc => {
+        const balance = Number(acc.balance) || 0;
+        const isFrozen = balance >= MAX_UTANG_LIMIT;
+
+        const rowStyle = isFrozen ? 'style="background-color: rgba(239, 68, 68, 0.08);"' : '';
+        const frozenBadge = isFrozen
+            ? `<span style="display: inline-block; background-color: #ef4444; color: #ffffff; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-left: 8px; letter-spacing: 0.04em; vertical-align: middle;">FROZEN</span>`
+            : '';
+
+        return `
+        <tr ${rowStyle}>
             <td>
-                <strong>${acc.full_name}</strong>
+                <strong>${acc.full_name}</strong>${frozenBadge}
                 <p class="text-muted" style="font-size: 0.8rem;">@${acc.username}</p>
             </td>
             <td><code>${acc.id}</code></td>
-            <td><strong class="${acc.balance > 0 ? 'text-danger' : 'text-success'}">₱${(acc.balance || 0).toFixed(2)}</strong></td>
+            <td>
+                <strong class="${balance > 0 ? 'text-danger' : 'text-success'}">${peso(balance)}</strong>
+                ${isFrozen ? `<div style="color: #ef4444; font-size: 0.75rem; font-weight: 600;">Max limit (${peso(MAX_UTANG_LIMIT)}) reached</div>` : ''}
+            </td>
             <td>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <button onclick="openPaymentModal('${acc.id}', '${acc.full_name}', ${acc.balance || 0})" 
+                    <button onclick="openPaymentModal('${acc.id}', '${acc.full_name}', ${balance})" 
                         style="background-color: #5865f2; color: white; border: none; padding: 6px 12px; font-size: 0.85rem; font-weight: 550; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: opacity 0.2s;"
                         onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
                         Settle / Pay
@@ -220,8 +237,8 @@ async function renderAccountsTable() {
                     </button>
                 </div>
             </td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }).join('');
 }
 
 function openPaymentModal(id, name, currentBalance) {
@@ -230,7 +247,7 @@ function openPaymentModal(id, name, currentBalance) {
 
     document.getElementById('pay-account-id').value = id;
     document.getElementById('pay-account-label').textContent = `Account: ${name}`;
-    document.getElementById('pay-account-balance-display').textContent = `Current Balance (Utang): ₱${currentBalance.toFixed(2)}`;
+    document.getElementById('pay-account-balance-display').textContent = `Current Balance (Utang): ${peso(currentBalance)}`;
     document.getElementById('pay-amount').value = '';
 
     modal.classList.add('active');

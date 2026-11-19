@@ -70,9 +70,9 @@ async function initAnalyticsDashboard() {
             .filter(u => u.role === 'customer')
             .reduce((sum, u) => sum + (u.balance || 0), 0);
 
-        document.getElementById('kpi-revenue').textContent = `₱${totalRevenue.toFixed(2)}`;
-        document.getElementById('kpi-profit').textContent = `₱${totalProfit.toFixed(2)}`;
-        document.getElementById('kpi-utang').textContent = `₱${totalUtang.toFixed(2)}`;
+        document.getElementById('kpi-revenue').textContent = `${peso(totalRevenue)}`;
+        document.getElementById('kpi-profit').textContent = `${peso(totalProfit)}`;
+        document.getElementById('kpi-utang').textContent = `${peso(totalUtang)}`;
         document.getElementById('kpi-transactions').textContent = sales.length;
 
         const badgeMargin = document.getElementById('badge-margin');
@@ -103,37 +103,54 @@ function renderCategoryDemand(sales, inventory) {
     sales.forEach(sale => {
         const items = parseSaleItems(sale.items);
         items.forEach(item => {
-            const cat = item.category || 'General';
+            const cat = (item.category || 'General').trim();
             if (!categoryMap[cat]) categoryMap[cat] = {};
-            categoryMap[cat][item.name] = (categoryMap[cat][item.name] || 0) + item.qty;
+            categoryMap[cat][item.name] = (categoryMap[cat][item.name] || 0) + (Number(item.qty) || 0);
         });
     });
 
-    const categories = Object.keys(categoryMap);
-    if (categories.length === 0) {
-        container.innerHTML = `<p class="text-muted">No sales data recorded yet. Complete a checkout in POS to generate forecasts.</p>`;
+    // Exclude 'General', rank items inside each category, and keep Top 3 items per category
+    const categoryEntries = Object.keys(categoryMap)
+        .filter(cat => cat.toLowerCase() !== 'general')
+        .map(cat => {
+            const itemsObj = categoryMap[cat];
+            const rankedItems = Object.entries(itemsObj)
+                .map(([name, qty]) => ({ name, qty: Number(qty) || 0 }))
+                .sort((a, b) => b.qty - a.qty)
+                .slice(0, 3); // Max Top 3 items per category (shows whatever exists up to 3)
+
+            const totalCategoryQty = rankedItems.reduce((sum, item) => sum + item.qty, 0);
+
+            return {
+                category: cat,
+                rankedItems,
+                totalCategoryQty
+            };
+        })
+        .sort((a, b) => b.totalCategoryQty - a.totalCategoryQty);
+
+    if (categoryEntries.length === 0) {
+        container.innerHTML = `<p class="text-muted">No non-General category sales data recorded yet. Complete a checkout in POS to generate forecasts.</p>`;
         return;
     }
 
-    container.innerHTML = categories.map(cat => {
-        const items = categoryMap[cat];
-        let topItem = 'None';
-        let maxQty = 0;
-
-        Object.keys(items).forEach(itemName => {
-            if (items[itemName] > maxQty) {
-                maxQty = items[itemName];
-                topItem = itemName;
-            }
-        });
+    container.innerHTML = categoryEntries.map(entry => {
+        const itemsListHtml = entry.rankedItems
+            .map((item, idx) => `
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 3px 0; color: var(--text-muted);">
+                    <span><strong style="color: var(--text-primary);">#${idx + 1}</strong> ${item.name}</span>
+                    <span>${commas(item.qty)} sold</span>
+                </div>
+            `)
+            .join('');
 
         return `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-surface-secondary); border-radius: 8px;">
-                <div>
-                    <strong style="text-transform: capitalize;">${cat}</strong>
-                    <p class="text-muted" style="font-size: 0.8rem;">Top Demand: <strong>${topItem}</strong></p>
+            <div style="padding: 12px 14px; background: var(--bg-surface-secondary); border-radius: 8px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <strong style="text-transform: capitalize; font-size: 0.95rem;">${entry.category}</strong>
+                    <span class="badge badge-success">${commas(entry.totalCategoryQty)} total units</span>
                 </div>
-                <span class="badge badge-success">${maxQty} units sold</span>
+                <div>${itemsListHtml}</div>
             </div>
         `;
     }).join('');
@@ -212,8 +229,8 @@ function renderProfitLeaderboard(sales) {
     tbody.innerHTML = sortedItems.map(item => `
         <tr>
             <td><strong>${item.name}</strong></td>
-            <td>${item.qty}</td>
-            <td class="text-accent">+₱${item.profit.toFixed(2)}</td>
+            <td>${commas(item.qty)}</td>
+            <td class="text-accent">+${peso(item.profit)}</td>
         </tr>
     `).join('');
 }
@@ -269,9 +286,9 @@ function renderSalesLedger(sales) {
             <tr>
                 <td><code>#${sale.id.slice(-6)}</code></td>
                 <td>${timeFormatted}</td>
-                <td><strong>₱${sale.revenue.toFixed(2)}</strong></td>
-                <td class="text-accent">+₱${sale.profit.toFixed(2)}</td>
-                <td><span class="badge ${isAccount ? 'badge-neutral' : 'badge-success'}">${isAccount ? 'Student Tab' : 'Cash'}</span></td>
+                <td><strong>${peso(sale.revenue)}</strong></td>
+                <td class="text-accent">+${peso(sale.profit)}</td>
+                <td><span class="badge ${isAccount ? 'badge-neutral' : 'badge-success'}">${isAccount ? 'Customer Tab' : 'Cash'}</span></td>
             </tr>
         `;
     }).join('');
@@ -288,7 +305,7 @@ function setupWhatIfSimulator(currentRevenue) {
         const modifier = parseFloat(select.value);
         const projected = currentRevenue * modifier;
         const diff = projected - currentRevenue;
-        display.textContent = `₱${projected.toFixed(2)} (${diff >= 0 ? '+' : ''}₱${diff.toFixed(2)})`;
+        display.textContent = `${peso(projected)} (${diff >= 0 ? '+' : ''}${peso(diff)})`;
     };
 
     calculate();

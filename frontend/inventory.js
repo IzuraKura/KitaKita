@@ -181,9 +181,9 @@ async function renderInventoryTable() {
             <tr>
                 <td><strong>${item.name}</strong></td>
                 <td><span class="text-muted">${item.category}</span></td>
-                <td>₱${item.cost.toFixed(2)}</td>
-                <td>₱${item.price.toFixed(2)}</td>
-                <td>${displayStock}</td>
+                <td>${peso(item.cost)}</td>
+                <td>${peso(item.price)}</td>
+                <td>${typeof displayStock === 'number' ? commas(displayStock) : displayStock}</td>
                 <td>${statusBadge}</td>
                 <td>
                     ${item.trackStock !== 0 ? `

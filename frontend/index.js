@@ -78,10 +78,10 @@ async function initDashboard() {
 
         const marginPercent = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0.0';
 
-        document.getElementById('val-revenue').textContent = `₱${totalRevenue.toFixed(2)}`;
-        document.getElementById('val-profit').textContent = `₱${totalProfit.toFixed(2)}`;
-        document.getElementById('val-stock').textContent = totalStockCount;
-        document.getElementById('val-alerts').textContent = `${criticalItems.length} Items`;
+        document.getElementById('val-revenue').textContent = peso(totalRevenue);
+        document.getElementById('val-profit').textContent = peso(totalProfit);
+        document.getElementById('val-stock').textContent = commas(totalStockCount);
+        document.getElementById('val-alerts').textContent = `${commas(criticalItems.length)} Items`;
 
         const badgeRevenue = document.getElementById('badge-revenue');
         const badgeProfit = document.getElementById('badge-profit');
