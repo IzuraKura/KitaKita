@@ -33,6 +33,22 @@ function createTables() {
         trackStock INTEGER
     )`);
 
+    db.run(`CREATE TABLE IF NOT EXISTS category_limits (
+        category TEXT PRIMARY KEY,
+        max_capacity INTEGER NOT NULL DEFAULT 100
+    )`, (err) => {
+        if (err) {
+            console.error('Error creating category_limits table:', err.message);
+        } else {
+            db.run(
+                `INSERT OR IGNORE INTO category_limits (category, max_capacity) VALUES ('default', 100)`,
+                (seedErr) => {
+                    if (seedErr) console.error('Error seeding default category limit:', seedErr.message);
+                }
+            );
+        }
+    });
+
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         full_name TEXT NOT NULL,
@@ -100,6 +116,63 @@ app.delete('/api/inventory/:id', (req, res) => {
     db.run(sql, [id], function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: "success" });
+    });
+});
+
+// Get all category storage limits
+app.get('/api/category-limits', (req, res) => {
+    db.all('SELECT category, max_capacity FROM category_limits', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        const limits = { default: 100 };
+        for (const row of rows || []) {
+            limits[row.category] = Number(row.max_capacity) || 100;
+        }
+        res.json({ message: "success", data: limits });
+    });
+});
+
+// Save or update category storage limits
+app.post('/api/category-limits', (req, res) => {
+    const incoming = req.body;
+    if (!incoming || typeof incoming !== 'object') {
+        return res.status(400).json({ error: "Invalid limits payload." });
+    }
+
+    const entries = Object.entries(incoming).filter(([cat, val]) => {
+        const num = Number(val);
+        return typeof cat === 'string' && cat.trim().length > 0 && Number.isInteger(num) && num > 0 && num <= 99999;
+    });
+
+    if (entries.length === 0) {
+        return res.status(400).json({ error: "No valid limits provided." });
+    }
+
+    db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        const stmt = db.prepare(`
+            INSERT INTO category_limits (category, max_capacity)
+            VALUES (?, ?)
+            ON CONFLICT(category) DO UPDATE SET max_capacity = excluded.max_capacity
+        `);
+
+        for (const [cat, val] of entries) {
+            stmt.run(cat.trim(), Number(val));
+        }
+
+        stmt.finalize((finalizeErr) => {
+            if (finalizeErr) {
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: finalizeErr.message });
+            }
+
+            db.run('COMMIT', (commitErr) => {
+                if (commitErr) {
+                    return res.status(500).json({ error: commitErr.message });
+                }
+                res.json({ message: "success" });
+            });
+        });
     });
 });
 

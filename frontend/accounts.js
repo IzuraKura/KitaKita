@@ -254,7 +254,15 @@ function openPaymentModal(id, name, currentBalance) {
 }
 
 async function deleteAccount(id) {
-    if (!confirm('Are you sure you want to delete this customer account?')) return;
+    const confirmed = await confirmModal({
+        title: 'Delete Customer Account',
+        message: 'Are you sure you want to delete this customer account?',
+        confirmText: 'Delete Account',
+        cancelText: 'Cancel',
+        danger: true
+    });
+
+    if (!confirmed) return;
 
     try {
         const response = await fetch(`${API_USERS}/${id}`, {

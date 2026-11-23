@@ -7,11 +7,31 @@ const API_SALES = 'http://localhost:3000/api/sales';
 const API_USERS = 'http://localhost:3000/api/users';
 
 let peakHoursChartInstance = null;
+let cachedInventory = [];
+let cachedAllSales = [];
+let cachedUsers = [];
+
+const filterState = {
+    mode: 'all', // 'all' | 'week' | 'month' | 'range' | 'date'
+    weekNum: 48,
+    weekYear: new Date().getFullYear(),
+    month: '',
+    rangeStart: '',
+    rangeEnd: '',
+    singleDate: ''
+};
+
+const calendarState = {
+    viewYear: new Date().getFullYear(),
+    viewMonth: new Date().getMonth(), // 0-11
+    rangeStep: 'start' // 'start' | 'end'
+};
 
 /* --- Global Initialization --- */
 document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
     if (document.getElementById('kpi-revenue')) {
+        initFilterControls();
         initAnalyticsDashboard();
     }
 });
@@ -19,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function initSidebar() {
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebar-toggle');
-    
+
     if (sidebarToggle && sidebar) {
         sidebarToggle.addEventListener('click', () => {
             sidebar.classList.toggle('collapsed');
@@ -27,7 +47,6 @@ function initSidebar() {
     }
 }
 
-// Safely parse items whether SQLite returns an array or a JSON string
 function parseSaleItems(saleItems) {
     if (!saleItems) return [];
     if (Array.isArray(saleItems)) return saleItems;
@@ -37,6 +56,405 @@ function parseSaleItems(saleItems) {
         console.error('Failed to parse sale items:', e);
         return [];
     }
+}
+
+function toLocalDateStr(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function toLocalMonthStr(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+}
+
+function getIsoWeekInfo(dateObj) {
+    const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const isoYear = d.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return { weekNo, isoYear };
+}
+
+function getIsoWeekBounds(year, weekNo) {
+    const jan4 = new Date(year, 0, 4);
+    const jan4Day = jan4.getDay() || 7;
+    const week1Monday = new Date(year, 0, 4 - (jan4Day - 1));
+
+    const start = new Date(week1Monday);
+    start.setDate(week1Monday.getDate() + (weekNo - 1) * 7);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+}
+
+function getFilteredSales(sales) {
+    if (filterState.mode === 'all') {
+        return sales;
+    }
+
+    if (filterState.mode === 'date') {
+        if (!filterState.singleDate) return sales;
+        const start = new Date(`${filterState.singleDate}T00:00:00`).getTime();
+        const end = new Date(`${filterState.singleDate}T23:59:59.999`).getTime();
+        return sales.filter(s => {
+            const ts = new Date(s.timestamp).getTime();
+            return !Number.isNaN(ts) && ts >= start && ts <= end;
+        });
+    }
+
+    if (filterState.mode === 'range') {
+        const start = filterState.rangeStart ? new Date(`${filterState.rangeStart}T00:00:00`).getTime() : -Infinity;
+        const end = filterState.rangeEnd ? new Date(`${filterState.rangeEnd}T23:59:59.999`).getTime() : Infinity;
+        return sales.filter(s => {
+            const ts = new Date(s.timestamp).getTime();
+            return !Number.isNaN(ts) && ts >= start && ts <= end;
+        });
+    }
+
+    if (filterState.mode === 'month') {
+        if (!filterState.month) return sales;
+        const [yearStr, monthStr] = filterState.month.split('-');
+        const year = Number(yearStr);
+        const monthIdx = Number(monthStr) - 1;
+        const start = new Date(year, monthIdx, 1, 0, 0, 0, 0).getTime();
+        const end = new Date(year, monthIdx + 1, 0, 23, 59, 59, 999).getTime();
+        return sales.filter(s => {
+            const ts = new Date(s.timestamp).getTime();
+            return !Number.isNaN(ts) && ts >= start && ts <= end;
+        });
+    }
+
+    if (filterState.mode === 'week') {
+        const bounds = getIsoWeekBounds(filterState.weekYear, filterState.weekNum);
+        if (!bounds) return sales;
+        const start = bounds.start.getTime();
+        const end = bounds.end.getTime();
+        return sales.filter(s => {
+            const ts = new Date(s.timestamp).getTime();
+            return !Number.isNaN(ts) && ts >= start && ts <= end;
+        });
+    }
+
+    return sales;
+}
+
+function updateFilterSummary() {
+    const labelEl = document.getElementById('analytics-filter-summary');
+    if (!labelEl) return;
+
+    if (filterState.mode === 'all') {
+        labelEl.textContent = 'Showing: All Time';
+    } else if (filterState.mode === 'week') {
+        labelEl.textContent = `Showing: Week ${filterState.weekNum} (${filterState.weekYear})`;
+    } else if (filterState.mode === 'month') {
+        labelEl.textContent = `Showing: Month (${filterState.month || 'Current'})`;
+    } else if (filterState.mode === 'range') {
+        const fromTxt = filterState.rangeStart || 'Start';
+        const toTxt = filterState.rangeEnd || 'End';
+        labelEl.textContent = `Showing: ${fromTxt} to ${toTxt}`;
+    } else if (filterState.mode === 'date') {
+        labelEl.textContent = `Showing: ${filterState.singleDate || 'Selected Date'}`;
+    }
+}
+
+function syncPickerLabels() {
+    const dateLabel = document.getElementById('date-picker-label');
+    const rangeLabel = document.getElementById('range-picker-label');
+
+    if (dateLabel) dateLabel.textContent = filterState.singleDate || 'Select date';
+    if (rangeLabel) {
+        rangeLabel.textContent = `${filterState.rangeStart || 'Start'} → ${filterState.rangeEnd || 'End'}`;
+    }
+}
+
+function renderCalendarPopover(popoverEl, pickerType) {
+    if (!popoverEl) return;
+
+    const year = calendarState.viewYear;
+    const month = calendarState.viewMonth;
+    const monthName = new Date(year, month, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    const todayStr = toLocalDateStr(new Date());
+
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const prevMonthDays = new Date(year, month, 0).getDate();
+
+    let cellsHtml = '';
+    const totalCells = 42;
+
+    for (let i = 0; i < totalCells; i++) {
+        let cellDate;
+        let isMuted = false;
+
+        if (i < firstDayIndex) {
+            const dNum = prevMonthDays - firstDayIndex + i + 1;
+            cellDate = new Date(year, month - 1, dNum);
+            isMuted = true;
+        } else if (i < firstDayIndex + daysInMonth) {
+            const dNum = i - firstDayIndex + 1;
+            cellDate = new Date(year, month, dNum);
+        } else {
+            const dNum = i - (firstDayIndex + daysInMonth) + 1;
+            cellDate = new Date(year, month + 1, dNum);
+            isMuted = true;
+        }
+
+        const iso = toLocalDateStr(cellDate);
+        const classes = ['cal-day-btn'];
+        if (isMuted) classes.push('muted');
+        if (iso === todayStr) classes.push('today');
+
+        if (pickerType === 'date' && iso === filterState.singleDate) {
+            classes.push('selected');
+        } else if (pickerType === 'range') {
+            if (iso === filterState.rangeStart || iso === filterState.rangeEnd) {
+                classes.push('range-edge');
+            } else if (filterState.rangeStart && filterState.rangeEnd && iso > filterState.rangeStart && iso < filterState.rangeEnd) {
+                classes.push('in-range');
+            }
+        }
+
+        cellsHtml += `<button type="button" class="${classes.join(' ')}" data-date="${iso}">${cellDate.getDate()}</button>`;
+    }
+
+    popoverEl.innerHTML = `
+        <div class="cal-header">
+            <button type="button" class="cal-nav-btn" data-cal-nav="prev">‹</button>
+            <span class="cal-title">${monthName}</span>
+            <button type="button" class="cal-nav-btn" data-cal-nav="next">›</button>
+        </div>
+        <div class="cal-weekdays">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+        </div>
+        <div class="cal-days-grid">${cellsHtml}</div>
+        <div class="cal-footer">
+            <button type="button" class="cal-mini-btn" data-cal-today="1">Today</button>
+            <button type="button" class="cal-mini-btn" data-cal-close="1">Done</button>
+        </div>
+    `;
+
+    popoverEl.querySelector('[data-cal-nav="prev"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        calendarState.viewMonth -= 1;
+        if (calendarState.viewMonth < 0) {
+            calendarState.viewMonth = 11;
+            calendarState.viewYear -= 1;
+        }
+        renderCalendarPopover(popoverEl, pickerType);
+    });
+
+    popoverEl.querySelector('[data-cal-nav="next"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        calendarState.viewMonth += 1;
+        if (calendarState.viewMonth > 11) {
+            calendarState.viewMonth = 0;
+            calendarState.viewYear += 1;
+        }
+        renderCalendarPopover(popoverEl, pickerType);
+    });
+
+    popoverEl.querySelector('[data-cal-today="1"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const now = new Date();
+        calendarState.viewYear = now.getFullYear();
+        calendarState.viewMonth = now.getMonth();
+        const todayIso = toLocalDateStr(now);
+        if (pickerType === 'date') filterState.singleDate = todayIso;
+        if (pickerType === 'range') {
+            filterState.rangeStart = todayIso;
+            filterState.rangeEnd = todayIso;
+        }
+        syncPickerLabels();
+        renderCalendarPopover(popoverEl, pickerType);
+    });
+
+    popoverEl.querySelector('[data-cal-close="1"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        popoverEl.classList.remove('open');
+    });
+
+    popoverEl.querySelectorAll('.cal-day-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const picked = btn.dataset.date;
+            if (!picked) return;
+
+            if (pickerType === 'date') {
+                filterState.singleDate = picked;
+                popoverEl.classList.remove('open');
+            } else if (pickerType === 'range') {
+                if (calendarState.rangeStep === 'start') {
+                    filterState.rangeStart = picked;
+                    filterState.rangeEnd = picked;
+                    calendarState.rangeStep = 'end';
+                } else {
+                    if (picked < filterState.rangeStart) {
+                        filterState.rangeEnd = filterState.rangeStart;
+                        filterState.rangeStart = picked;
+                    } else {
+                        filterState.rangeEnd = picked;
+                    }
+                    calendarState.rangeStep = 'start';
+                    popoverEl.classList.remove('open');
+                }
+            }
+
+            syncPickerLabels();
+            renderCalendarPopover(popoverEl, pickerType);
+        });
+    });
+}
+
+function setActiveTab(mode) {
+    filterState.mode = mode;
+
+    document.querySelectorAll('.analytics-mode-btn').forEach(btn => {
+        const isMatch = btn.dataset.mode === mode;
+        btn.classList.toggle('btn-primary', isMatch);
+        btn.classList.toggle('active', isMatch);
+        btn.classList.toggle('btn-secondary', !isMatch);
+    });
+
+    const panels = {
+        week: document.getElementById('panel-week'),
+        month: document.getElementById('panel-month'),
+        range: document.getElementById('panel-range'),
+        date: document.getElementById('panel-date')
+    };
+
+    Object.entries(panels).forEach(([key, el]) => {
+        if (el) el.style.display = key === mode ? 'flex' : 'none';
+    });
+
+    updateFilterSummary();
+}
+
+function initFilterControls() {
+    const now = new Date();
+    const todayStr = toLocalDateStr(now);
+    const monthStr = toLocalMonthStr(now);
+    const { weekNo, isoYear } = getIsoWeekInfo(now);
+
+    filterState.singleDate = todayStr;
+    filterState.weekNum = weekNo;
+    filterState.weekYear = isoYear;
+    filterState.rangeStart = todayStr;
+    filterState.rangeEnd = todayStr;
+    filterState.month = monthStr;
+
+    const weekSelect = document.getElementById('analytics-week-select');
+    const weekYearSelect = document.getElementById('analytics-week-year-select');
+    const monthSelect = document.getElementById('analytics-month-select');
+    const yearSelect = document.getElementById('analytics-year-select');
+    const [curYear, curMonth] = monthStr.split('-');
+
+    if (weekSelect) {
+        let weeksHtml = '';
+        for (let w = 1; w <= 52; w++) {
+            weeksHtml += `<option value="${w}">Week ${w}</option>`;
+        }
+        weekSelect.innerHTML = weeksHtml;
+        weekSelect.value = String(weekNo);
+    }
+
+    const startY = Number(curYear) - 3;
+    const endY = Number(curYear) + 1;
+    let yearsHtml = '';
+    for (let y = endY; y >= startY; y--) {
+        yearsHtml += `<option value="${y}">${y}</option>`;
+    }
+
+    if (weekYearSelect) {
+        weekYearSelect.innerHTML = yearsHtml;
+        weekYearSelect.value = String(isoYear);
+    }
+
+    if (yearSelect) {
+        yearSelect.innerHTML = yearsHtml;
+        yearSelect.value = curYear;
+    }
+    if (monthSelect) {
+        monthSelect.value = curMonth;
+    }
+
+    syncPickerLabels();
+
+    const pickerConfigs = [
+        { triggerId: 'date-picker-trigger', popoverId: 'date-calendar-popover', type: 'date' },
+        { triggerId: 'range-picker-trigger', popoverId: 'range-calendar-popover', type: 'range' }
+    ];
+
+    pickerConfigs.forEach(({ triggerId, popoverId, type }) => {
+        const trigger = document.getElementById(triggerId);
+        const popover = document.getElementById(popoverId);
+        if (!trigger || !popover) return;
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = popover.classList.contains('open');
+            document.querySelectorAll('.custom-calendar-popover.open').forEach(p => p.classList.remove('open'));
+            if (!isOpen) {
+                if (type === 'range') calendarState.rangeStep = 'start';
+                renderCalendarPopover(popover, type);
+                popover.classList.add('open');
+            }
+        });
+    });
+
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.custom-calendar-popover.open').forEach(p => p.classList.remove('open'));
+    });
+
+    document.querySelectorAll('.analytics-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.mode;
+            setActiveTab(mode);
+            if (mode === 'all') {
+                renderAnalyticsView();
+            }
+        });
+    });
+
+    document.getElementById('apply-week-btn')?.addEventListener('click', () => {
+        filterState.weekNum = Number(weekSelect?.value || weekNo);
+        filterState.weekYear = Number(weekYearSelect?.value || isoYear);
+        updateFilterSummary();
+        renderAnalyticsView();
+    });
+
+    document.getElementById('apply-month-btn')?.addEventListener('click', () => {
+        const mVal = monthSelect?.value || curMonth;
+        const yVal = yearSelect?.value || curYear;
+        filterState.month = `${yVal}-${mVal}`;
+        updateFilterSummary();
+        renderAnalyticsView();
+    });
+
+    document.getElementById('apply-range-btn')?.addEventListener('click', () => {
+        if (filterState.rangeStart && filterState.rangeEnd && filterState.rangeStart > filterState.rangeEnd) {
+            if (typeof showToast === 'function') {
+                showToast('"From" date cannot be after "To" date.', 'warning');
+            }
+            return;
+        }
+        updateFilterSummary();
+        renderAnalyticsView();
+    });
+
+    document.getElementById('apply-date-btn')?.addEventListener('click', () => {
+        updateFilterSummary();
+        renderAnalyticsView();
+    });
 }
 
 async function initAnalyticsDashboard() {
@@ -51,47 +469,54 @@ async function initAnalyticsDashboard() {
         const salesData = await salesRes.json();
         const usersData = await usersRes.json();
 
-        const inventory = invData.data || [];
-        const sales = salesData.data || [];
-        const users = usersData.data || [];
+        cachedInventory = invData.data || [];
+        cachedAllSales = salesData.data || [];
+        cachedUsers = usersData.data || [];
 
-        // 1. Compute Executive KPIs
-        let totalRevenue = 0;
-        let totalProfit = 0;
-
-        sales.forEach(s => {
-            totalRevenue += s.revenue || 0;
-            totalProfit += s.profit || 0;
-        });
-
-        const marginPercent = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0.0';
-
-        const totalUtang = users
-            .filter(u => u.role === 'customer')
-            .reduce((sum, u) => sum + (u.balance || 0), 0);
-
-        document.getElementById('kpi-revenue').textContent = `${peso(totalRevenue)}`;
-        document.getElementById('kpi-profit').textContent = `${peso(totalProfit)}`;
-        document.getElementById('kpi-utang').textContent = `${peso(totalUtang)}`;
-        document.getElementById('kpi-transactions').textContent = sales.length;
-
-        const badgeMargin = document.getElementById('badge-margin');
-        if (badgeMargin) {
-            badgeMargin.textContent = `${marginPercent}% Margin`;
-            badgeMargin.className = parseFloat(marginPercent) > 0 ? 'badge badge-success' : 'badge badge-neutral';
-        }
-
-        // 2. Render Analytics Modules
-        renderCategoryDemand(sales, inventory);
-        renderPeakHoursChart(sales);
-        renderProfitLeaderboard(sales);
-        renderStockRunway(sales, inventory);
-        renderSalesLedger(sales);
-        setupWhatIfSimulator(totalRevenue);
-
+        renderAnalyticsView();
     } catch (error) {
         console.error('Error loading analytics data:', error);
     }
+}
+
+function renderAnalyticsView() {
+    const sales = getFilteredSales(cachedAllSales);
+    const inventory = cachedInventory;
+    const users = cachedUsers;
+
+    // 1. Compute Executive KPIs
+    let totalRevenue = 0;
+    let totalProfit = 0;
+
+    sales.forEach(s => {
+        totalRevenue += s.revenue || 0;
+        totalProfit += s.profit || 0;
+    });
+
+    const marginPercent = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0.0';
+
+    const totalUtang = users
+        .filter(u => u.role === 'customer')
+        .reduce((sum, u) => sum + (u.balance || 0), 0);
+
+    document.getElementById('kpi-revenue').textContent = `${peso(totalRevenue)}`;
+    document.getElementById('kpi-profit').textContent = `${peso(totalProfit)}`;
+    document.getElementById('kpi-utang').textContent = `${peso(totalUtang)}`;
+    document.getElementById('kpi-transactions').textContent = sales.length;
+
+    const badgeMargin = document.getElementById('badge-margin');
+    if (badgeMargin) {
+        badgeMargin.textContent = `${marginPercent}% Margin`;
+        badgeMargin.className = parseFloat(marginPercent) > 0 ? 'badge badge-success' : 'badge badge-neutral';
+    }
+
+    // 2. Render Analytics Modules
+    renderCategoryDemand(sales, inventory);
+    renderPeakHoursChart(sales);
+    renderProfitLeaderboard(sales);
+    renderStockRunway(sales, inventory);
+    renderSalesLedger(sales);
+    setupWhatIfSimulator(totalRevenue);
 }
 
 function renderCategoryDemand(sales, inventory) {
@@ -109,7 +534,6 @@ function renderCategoryDemand(sales, inventory) {
         });
     });
 
-    // Exclude 'General', rank items inside each category, and keep Top 3 items per category
     const categoryEntries = Object.keys(categoryMap)
         .filter(cat => cat.toLowerCase() !== 'general')
         .map(cat => {
@@ -117,7 +541,7 @@ function renderCategoryDemand(sales, inventory) {
             const rankedItems = Object.entries(itemsObj)
                 .map(([name, qty]) => ({ name, qty: Number(qty) || 0 }))
                 .sort((a, b) => b.qty - a.qty)
-                .slice(0, 3); // Max Top 3 items per category (shows whatever exists up to 3)
+                .slice(0, 3);
 
             const totalCategoryQty = rankedItems.reduce((sum, item) => sum + item.qty, 0);
 
@@ -130,7 +554,7 @@ function renderCategoryDemand(sales, inventory) {
         .sort((a, b) => b.totalCategoryQty - a.totalCategoryQty);
 
     if (categoryEntries.length === 0) {
-        container.innerHTML = `<p class="text-muted">No non-General category sales data recorded yet. Complete a checkout in POS to generate forecasts.</p>`;
+        container.innerHTML = `<p class="text-muted">No non-General category sales data recorded for this selection.</p>`;
         return;
     }
 
@@ -163,7 +587,9 @@ function renderPeakHoursChart(sales) {
     const hourCounts = Array(24).fill(0);
     sales.forEach(sale => {
         const hour = new Date(sale.timestamp).getHours();
-        hourCounts[hour] += 1;
+        if (!Number.isNaN(hour)) {
+            hourCounts[hour] += 1;
+        }
     });
 
     const labels = ['7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM'];
@@ -274,7 +700,7 @@ function renderSalesLedger(sales) {
     if (!tbody) return;
 
     if (sales.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="empty-state text-muted">No recorded transactions yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-state text-muted">No recorded transactions for this selection.</td></tr>`;
         return;
     }
 
